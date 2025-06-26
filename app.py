@@ -2,6 +2,8 @@ from flask import Flask, request, send_file, send_from_directory
 from flask_cors import CORS
 import yt_dlp
 import os
+import tempfile
+import shutil
 
 app = Flask(__name__, static_folder="static")
 CORS(app)
@@ -18,26 +20,50 @@ def download():
     if not url:
         return "URL is required", 400
 
-    ydl_opts = {
-        "format": "bestvideo+bestaudio/best" if type_ == "video" else "bestaudio",
-        "outtmpl": "output.%(ext)s",
-        "cookiefile": "cookies.txt",
-    }
+    temp_dir = tempfile.mkdtemp()
 
-    if type_ == "audio":
-        ydl_opts["postprocessors"] = [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "192",
-        }]
+    try:
+        # タイトル取得（事前情報取得）
+        with yt_dlp.YoutubeDL({"cookiefile": "cookies.txt", "quiet": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            title = info.get("title", "downloaded").replace("/", "_").replace("\\", "_")
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
         if type_ == "audio":
-            filename = filename.rsplit(".", 1)[0] + ".mp3"
+            output_path = os.path.join(temp_dir, f"{title}.%(ext)s")
+            ydl_opts = {
+                "format": "bestaudio",
+                "outtmpl": output_path,
+                "cookiefile": "cookies.txt",
+                "quiet": True,
+                "postprocessors": [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }]
+            }
+            target_file = os.path.join(temp_dir, f"{title}.mp3")
 
-    return send_file(filename, as_attachment=True)
+        else:  # type == video
+            output_path = os.path.join(temp_dir, f"{title}.%(ext)s")
+            ydl_opts = {
+                "format": "bestvideo+bestaudio/best",
+                "outtmpl": output_path,
+                "cookiefile": "cookies.txt",
+                "quiet": True,
+                "merge_output_format": "mp4",  # これが重要
+            }
+            target_file = os.path.join(temp_dir, f"{title}.mp4")
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        return send_file(target_file, as_attachment=True)
+
+    except Exception as e:
+        return str(e), 500
+
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
