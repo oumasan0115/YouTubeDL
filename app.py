@@ -1,47 +1,37 @@
-# app.py
 from flask import Flask, request, send_file
 from flask_cors import CORS
 import yt_dlp
 import tempfile
 import os
+
 app = Flask(__name__)
 CORS(app)
 
+@app.route("/")
+def index():
+    return "YouTubeDL API is running!"
+
 @app.route("/download", methods=["POST"])
 def download():
-    data = request.json
+    data = request.get_json()
     url = data.get("url")
-    mode = data.get("mode", "audio")  # "audio" or "video"
 
     if not url:
-        return {"error": "URLがありません"}, 400
-
-    tmpdir = tempfile.mkdtemp()
-    filepath = os.path.join(tmpdir, "%(title)s.%(ext)s")
+        return {"error": "URL is required"}, 400
 
     ydl_opts = {
-        'outtmpl': filepath,
-        'quiet': True,
+        "format": "bestaudio/best",
+        "outtmpl": tempfile.gettempdir() + "/%(title)s.%(ext)s",
+        "noplaylist": True,
+        "quiet": True,
     }
 
-    if mode == "audio":
-        ydl_opts.update({
-            'format': 'bestaudio/best',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'm4a',
-            }],
-        })
-    else:
-        ydl_opts['format'] = 'best'
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        filename = ydl.prepare_filename(info)
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            ext = 'm4a' if mode == "audio" else info['ext']
-            filename = ydl.prepare_filename(info).replace("%(ext)s", ext)
+    return send_file(filename, as_attachment=True)
 
-        return send_file(filename, as_attachment=True)
-    except Exception as e:
-        return {"error": str(e)}, 500
-
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
