@@ -21,6 +21,7 @@ def download_audio():
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": "output.%(ext)s",
+        "cookiefile": "cookies.txt",
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
