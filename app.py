@@ -11,24 +11,26 @@ CORS(app)
 def index():
     return "YouTubeDL API is running!"
 
-@app.route("/download", methods=["POST"])
-def download():
-    data = request.get_json()
-    url = data.get("url")
-
+@app.route("/download", methods=["GET"])
+def download_audio():
+    url = request.args.get("url")
     if not url:
-        return {"error": "URL is required"}, 400
+        return "URL is required", 400
 
+    # YouTubeから音声を抽出
     ydl_opts = {
         "format": "bestaudio/best",
-        "outtmpl": tempfile.gettempdir() + "/%(title)s.%(ext)s",
-        "noplaylist": True,
-        "quiet": True,
+        "outtmpl": "output.%(ext)s",
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        }],
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
+        filename = ydl.prepare_filename(info).rsplit(".", 1)[0] + ".mp3"
 
     return send_file(filename, as_attachment=True)
 
